@@ -155,23 +155,56 @@ Obtain a token via the auth endpoint described in the next section.
 
 ---
 
-## Authentication — temporary endpoint
+## Authentication — OTP login flow
 
-> **Important:** The current token endpoint is a temporary stand-in and is **not the final authentication flow.**
+Login is a two-step OTP flow. No password is required.
 
-`POST /api/v1/auth/token/`
+### Step 1 — Request an OTP
+
+`POST /api/v1/auth/request-otp/`
 
 Request body:
 ```json
-{ "phone_number": "0201234567", "password": "your-password" }
+{ "phone_number": "0201234567" }
 ```
 
-Response:
+Response (200):
 ```json
-{ "token": "abc123...", "user_id": "uuid-here" }
+{ "detail": "OTP sent", "expires_in": 300 }
 ```
 
-This is a plain phone-number/password token endpoint used during development. The production login flow will use a one-time password (OTP) delivered via [Moolre](https://moolre.com/) (a Ghana-based SMS provider). **Do not build client-side logic that assumes this endpoint is permanent** — it will be replaced before launch.
+In **local development** (when `DEBUG=True` and `OTP_BACKEND=console`), the response also includes a `debug_code` field containing the plaintext OTP so you don't have to read the server logs:
+
+```json
+{ "detail": "OTP sent", "expires_in": 300, "debug_code": "7341" }
+```
+
+`debug_code` is **never present in production** — `prod.py` hardcodes both `DEBUG=False` and `OTP_BACKEND=moolre`, making it physically impossible to appear outside a local dev session.
+
+### Step 2 — Verify the OTP
+
+`POST /api/v1/auth/verify-otp/`
+
+Request body:
+```json
+{ "phone_number": "0201234567", "code": "7341" }
+```
+
+Response (200):
+```json
+{
+  "token": "abc123...",
+  "member": { "id": "...", "full_name": "...", "member_id": "MEM-0001", ... }
+}
+```
+
+Use the returned token for all subsequent requests:
+
+```
+Authorization: Token abc123...
+```
+
+The OTP is single-use and expires after 5 minutes (`OTP_EXPIRY_SECONDS = 300`). Requesting a new OTP invalidates any prior pending one for the same number.
 
 ---
 

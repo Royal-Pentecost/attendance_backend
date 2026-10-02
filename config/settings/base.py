@@ -1,12 +1,3 @@
-"""
-config/settings/base.py
-
-Settings shared across all environments. Does NOT define DATABASES —
-that lives in dev.py (SQLite) and prod.py (PostgreSQL).
-
-Do not import this file directly. Use DJANGO_SETTINGS_MODULE to select
-config.settings.dev (local) or config.settings.prod (server).
-"""
 from pathlib import Path
 
 from decouple import config
@@ -15,24 +6,14 @@ from decouple import config
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-# ---------------------------------------------------------------------------
-# Security
-# ---------------------------------------------------------------------------
 
-# ⚠️  INSECURE FALLBACK — for local dev only, so bare `python manage.py ...`
-#    works without a .env file. In production, SECRET_KEY MUST be set in the
-#    environment; prod.py raises ImproperlyConfigured if it's missing.
 SECRET_KEY = config(
     "SECRET_KEY",
     default="django-insecure-local-dev-only-change-before-deploying",
 )
 
-# ---------------------------------------------------------------------------
-# Application definition
-# ---------------------------------------------------------------------------
 
 INSTALLED_APPS = [
-    # Jazzmin MUST appear before django.contrib.admin — it overrides the admin templates.
     "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -42,7 +23,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "rest_framework",
-    # Local — migration dependency order: core → accounts → attendance/content/milestones
+    "rest_framework.authtoken",
+    "drf_spectacular",
+    # Local migration dependency order: core → accounts → attendance/content/milestones
     "core",
     "accounts",
     "attendance",
@@ -79,9 +62,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# ---------------------------------------------------------------------------
 # Authentication
-# ---------------------------------------------------------------------------
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -92,34 +73,42 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# ---------------------------------------------------------------------------
 # Django REST Framework
-# ---------------------------------------------------------------------------
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    "DEFAULT_RENDERER_CLASSES": [
-        "rest_framework.renderers.JSONRenderer",
-    ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 25,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
-# ---------------------------------------------------------------------------
+# drf-spectacular — OpenAPI schema generation
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Pentecost Attendance API",
+    "DESCRIPTION": "API for the Pentecost Attendance platform multi-branch church membership and attendance tracking.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "WeekdayEnum": "accounts.models.DayBornGroup.WEEKDAY_CHOICES",
+    },
+}
+
 # Internationalisation
-# ---------------------------------------------------------------------------
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# ---------------------------------------------------------------------------
 # Static & media files
-# ---------------------------------------------------------------------------
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -127,17 +116,17 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# ---------------------------------------------------------------------------
 # Primary key default type
-# ---------------------------------------------------------------------------
 
-# Our models use UUID PKs via BaseModel. This affects Django's built-in
-# models (auth.Permission, etc.) which don't inherit from BaseModel.
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ---------------------------------------------------------------------------
+# OTP / SMS
+
+OTP_LENGTH = 4
+OTP_EXPIRY_SECONDS = 300   # 5 minutes
+OTP_MAX_ATTEMPTS = 5
+
 # Email (console backend — dev-safe default; prod.py can override)
-# ---------------------------------------------------------------------------
 
 MAILERS = {
     "default": {
@@ -145,21 +134,15 @@ MAILERS = {
     },
 }
 
-# ---------------------------------------------------------------------------
-# Jazzmin admin UI
-# Shared across all environments — branding and icons are not env-specific.
-# Docs: https://django-jazzmin.readthedocs.io/configuration/
-# ---------------------------------------------------------------------------
 
 JAZZMIN_SETTINGS = {
-    # ── Branding ─────────────────────────────────────────────────────────────
+    # Branding
     "site_title": "Pentecost Attendance Admin",
     "site_header": "Pentecost Attendance",
     "site_brand": "Pentecost Attendance",
     "welcome_sign": "Welcome to the Pentecost Attendance admin",
     "copyright": "",  # TODO: fill in before launch, e.g. "Church of Pentecost, Ayigya District"
 
-    # ── Search ───────────────────────────────────────────────────────────────
     "search_model": ["accounts.Member"],
 
     # ── Top menu ─────────────────────────────────────────────────────────────
@@ -169,7 +152,6 @@ JAZZMIN_SETTINGS = {
         {"name": "Django Docs", "url": "https://docs.djangoproject.com/en/stable/", "new_window": True},
     ],
 
-    # ── App / model ordering in the sidebar ──────────────────────────────────
     "order_with_respect_to": [
         "accounts",
         "attendance",
@@ -177,8 +159,6 @@ JAZZMIN_SETTINGS = {
         "milestones",
     ],
 
-    # ── FontAwesome 5 Free icons (Jazzmin 3.x bundles FA 5.15.4) ─────────────
-    # App-level icons
     "icons": {
         "auth": "fas fa-shield-alt",
         "auth.Group": "fas fa-users-cog",
@@ -213,7 +193,7 @@ JAZZMIN_SETTINGS = {
     "default_icon_children": "fas fa-circle",
 
     # ── UI options ────────────────────────────────────────────────────────────
-    "show_ui_builder": True,   # dev convenience; set False before production launch
+    #"show_ui_builder": True,   # dev convenience; set False before production launch
     "related_modal_active": True,
     "navigation_expanded": True,
     "hide_apps": [],

@@ -2,7 +2,7 @@ from decouple import config, Csv
 
 from .base import *  # noqa: F401, F403
 
-DEBUG = False
+DEBUG = config("DEBUG",cast=bool, default="False")
 
 SECRET_KEY = config("SECRET_KEY")
 

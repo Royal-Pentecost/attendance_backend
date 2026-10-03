@@ -20,6 +20,13 @@ STORAGES = {
     },
 }
 
+# Jazzmin 3.x's base.html passes the bare directory path 'vendor/bootswatch'
+# to {% static %} as a JS data attribute (used as a runtime URL prefix for the
+# theme-switcher). That path has no manifest entry because it is a directory,
+# not a file. Setting this to False makes WhiteNoise fall back to the unhashed
+# path for missing entries instead of raising ValueError.
+WHITENOISE_MANIFEST_STRICT = False
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",

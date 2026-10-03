@@ -205,7 +205,7 @@ JAZZMIN_UI_TWEAKS = {
     # Other options: litera, lux, cosmo, simplex, united.
     # Change via the UI Builder button in the admin (only visible when show_ui_builder=True).
     "theme": "flatly",
-    "dark_mode_theme": "darkly",
+    "default_theme_mode": "auto",
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,

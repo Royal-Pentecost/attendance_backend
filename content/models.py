@@ -153,3 +153,49 @@ class NotificationRead(BaseModel):
     def __str__(self):
         status = "read" if self.read_at else "unread"
         return f"{self.notification} — {self.member} ({status})"
+
+
+class BibleStudyTranslation(BaseModel):
+    """
+    One week's study written out in one language.
+
+    Kept separate from `BibleStudyWeek` for two reasons. The week describes a
+    pamphlet — which study, which scripture, which pages — and that is true
+    whatever language it is read in. And a study is publishable the moment those
+    facts are known: the office should not have to type out aims and questions
+    in two languages before the congregation can be told what this Sunday is
+    about.
+
+    So this is optional, and so is each language. A week with no translation
+    still shows its title, scripture and page range; one with English only shows
+    English to everybody; one with both follows the member's own
+    `bible_study_language`.
+    """
+
+    LANG_EN = "en"
+    LANG_TW = "tw"
+    LANG_CHOICES = [(LANG_EN, "English"), (LANG_TW, "Twi")]
+
+    week = models.ForeignKey(
+        BibleStudyWeek, on_delete=models.CASCADE, related_name="translations",
+    )
+    language = models.CharField(max_length=5, choices=LANG_CHOICES)
+
+    title = models.CharField(max_length=200, blank=True)
+    # Lists, because the reader renders them as numbered points rather than a
+    # paragraph. Stored as JSON so a question cannot be split by a stray newline.
+    aims = models.JSONField(default=list, blank=True)
+    questions = models.JSONField(default=list, blank=True)
+    memory_verse = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["language"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["week", "language"], name="one_translation_per_language",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.week.title} [{self.language}]"

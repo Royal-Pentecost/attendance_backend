@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from accounts.models import Assembly, DayBornGroup, Member
 from accounts.serializers import AssemblyMiniSerializer, DayBornGroupMiniSerializer, MemberMiniSerializer
-from .models import WeeklySchedule, BibleStudyWeek, Event, Notification, NotificationRead
+from .models import WeeklySchedule, BibleStudyWeek, BibleStudyTranslation, Event, Notification, NotificationRead
 
 
 class WeeklyScheduleSerializer(serializers.ModelSerializer):
@@ -25,6 +25,15 @@ class WeeklyScheduleSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+class BibleStudyTranslationSerializer(serializers.ModelSerializer):
+    """One week's study in one language. Every field optional but `language`."""
+
+    class Meta:
+        model = BibleStudyTranslation
+        fields = ["id", "week", "language", "title", "aims", "questions", "memory_verse", "notes"]
+        read_only_fields = ["id"]
+
+
 class BibleStudyWeekSerializer(serializers.ModelSerializer):
     assembly = AssemblyMiniSerializer(read_only=True)
     assembly_id = serializers.PrimaryKeyRelatedField(
@@ -35,13 +44,17 @@ class BibleStudyWeekSerializer(serializers.ModelSerializer):
         required=False,
         help_text="Omit for district-wide content.",
     )
+    # Nested so one request gives the reader everything it needs. A week with no
+    # translations is still perfectly valid — it just shows its title, scripture
+    # and page range, which is what the printed pamphlet gives you anyway.
+    translations = BibleStudyTranslationSerializer(many=True, read_only=True)
 
     class Meta:
         model = BibleStudyWeek
         fields = [
             "id", "assembly", "assembly_id", "theme", "week_number", "title",
             "scripture_reference", "page_range", "study_date",
-            "pdf_file", "is_published",
+            "pdf_file", "is_published", "translations",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]

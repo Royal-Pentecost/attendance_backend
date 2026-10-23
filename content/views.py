@@ -23,7 +23,9 @@ from rest_framework.permissions import IsAuthenticated
 from accounts.models import Member
 from accounts.permissions import IsAssemblyAdminOrSuperAdmin
 from content.models import WeeklySchedule, BibleStudyWeek, Event, Notification, NotificationRead
+from content.models import BibleStudyTranslation
 from content.serializers import (
+    BibleStudyTranslationSerializer,
     WeeklyScheduleSerializer,
     BibleStudyWeekSerializer,
     EventSerializer,
@@ -264,3 +266,25 @@ class NotificationReadViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         profile = self.get_requesting_profile()
         serializer.save(member=profile, read_at=timezone.now())
+
+
+@extend_schema_view(
+    list=extend_schema(summary="Study text, per language"),
+    create=extend_schema(summary="Write a study in one language"),
+)
+class BibleStudyTranslationViewSet(viewsets.ModelViewSet):
+    """
+    The written-out study, one row per language.
+
+    Separate from the week itself so a study can be published the moment its
+    title, scripture and page range are known — the aims and questions can
+    follow when somebody has time to type them, in either language or both.
+    """
+
+    serializer_class = BibleStudyTranslationSerializer
+    queryset = BibleStudyTranslation.objects.select_related("week").all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        week = self.request.query_params.get("week")
+        return qs.filter(week_id=week) if week else qs

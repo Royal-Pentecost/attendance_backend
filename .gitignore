@@ -26,6 +26,9 @@ media/
 staticfiles/
 static/
 
+# Real phone numbers for the data loader — public repo, so never committed
+corrections.json
+
 # Environment variables — NEVER commit real secrets
 .env
 .env.local

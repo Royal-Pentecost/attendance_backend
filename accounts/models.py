@@ -181,7 +181,18 @@ class Member(BaseModel):
         (ROLE_SUPER_ADMIN, "Super Admin"),
     ]
 
-    user = models.OneToOneField("accounts.User", on_delete=models.CASCADE, related_name="member_profile")
+    # A member is a person on the roll; a user is a login. Most of the
+    # congregation has no phone number on file yet, and since the phone *is* the
+    # login identity, those members exist without a user until a number is
+    # collected. Everything that reads a profile goes User -> member_profile, so
+    # a member with no user is simply never the one making a request.
+    user = models.OneToOneField(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="member_profile",
+        null=True,
+        blank=True,
+    )
     member_id = models.CharField(
         max_length=20, unique=True, db_index=True,
         help_text="Display ID, e.g. MEM-0042. Generated on creation.",

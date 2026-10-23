@@ -157,10 +157,13 @@ class DayBornGroupViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         tags=["Members"],
         description=(
             "Create a new member profile. **Requires assembly_admin or super_admin role.**\n\n"
-            "Uses `MemberCreateSerializer` — `user` (FK to an existing User account) and `role` "
-            "are writable here. Use this for admin-initiated member creation or CSV-import flows.\n\n"
-            "Note: `role` is read-only on update (via `MemberSerializer`). "
-            "Role changes after creation require the Django admin or a future dedicated endpoint."
+            "Uses `MemberCreateSerializer`. Pass `phone_number` to give the member a login — "
+            "the User account is created alongside the profile. Omit it for the many members "
+            "on the roll with no phone on file; they can be given one later.\n\n"
+            "`member_id` is generated as the next free `MEM-###` when omitted. "
+            "`assembly` defaults to the creating admin's own.\n\n"
+            "`role` may only be set above `member` by a super admin. Everyone else promotes "
+            "through `POST /members/{id}/set-role/`, which is audited."
         ),
     ),
     retrieve=extend_schema(tags=["Members"]),
@@ -199,6 +202,77 @@ class MemberViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         if self.action == "create":
             return MemberCreateSerializer
         return MemberSerializer
+
+    def perform_create(self, serializer):
+        profile = self.get_requesting_profile()
+
+        # An admin adding someone to the roll means their own assembly. Left
+        # unset, the new member falls outside the assembly filter in
+        # `get_queryset` and vanishes from the directory of the admin who had
+        # just typed them in.
+        extra = {}
+        if serializer.validated_data.get("assembly") is None and profile and profile.assembly:
+            extra["assembly"] = profile.assembly
+
+        member = serializer.save(**extra)
+
+        record_activity(
+            actor=profile,
+            action="Added member",
+            affected_record=(
+                f"{member.full_name} ({member.member_id})"
+                + (" with login" if member.user_id else " — no phone on file")
+            ),
+            assembly=member.assembly,
+        )
+
+    def perform_update(self, serializer):
+        tracked = ("full_name", "date_of_birth", "sex")
+        before = {f: getattr(serializer.instance, f) for f in tracked}
+        had_phone = serializer.instance.user.phone_number if serializer.instance.user_id else ""
+
+        member = serializer.save()
+
+        # Name the fields that actually moved. "Updated member" on its own tells
+        # whoever reads the trail nothing they can check a correction against.
+        changed = [f.replace("_", " ") for f, was in before.items() if getattr(member, f) != was]
+        has_phone = member.user.phone_number if member.user_id else ""
+        if has_phone != had_phone:
+            changed.append(
+                "phone added" if not had_phone else
+                "phone removed" if not has_phone else "phone number"
+            )
+        record_activity(
+            actor=self.get_requesting_profile(),
+            action="Corrected member record" if changed else "Updated member",
+            affected_record=(
+                f"{member.full_name} ({member.member_id})"
+                + (f": {', '.join(changed)}" if changed else "")
+            ),
+            assembly=member.assembly,
+        )
+
+    def perform_destroy(self, instance):
+        # Captured before the row goes; afterwards there is nothing to name.
+        description = f"{instance.full_name} ({instance.member_id})"
+        assembly = instance.assembly
+        actor = self.get_requesting_profile()
+
+        # The login goes with the profile. Left behind, the number still passes
+        # OTP and the holder is handed a token with no member attached — signed
+        # in to an app that has nobody to show them. Deleting the user cascades
+        # to the member, so this one call removes both.
+        if instance.user_id:
+            instance.user.delete()
+        else:
+            instance.delete()
+        record_activity(
+            actor=actor,
+            action="Removed member",
+            affected_record=description,
+            severity=ActivityLog.SEVERITY_CRITICAL,
+            assembly=assembly,
+        )
 
     @extend_schema(
         summary="Change a member's role",

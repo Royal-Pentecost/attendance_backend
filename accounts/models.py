@@ -199,6 +199,15 @@ class Member(BaseModel):
     )
     full_name = models.CharField(max_length=150)
     date_of_birth = models.DateField(blank=True, null=True)
+
+    # Needed to address a member correctly — "Mr" or "Mrs" before the surname,
+    # unless they hold an office, in which case the office wins. Blank is a real
+    # answer here: the roll arrived with two members whose sex was not recorded,
+    # and guessing it from a first name would be worse than leaving it off.
+    SEX_MALE = "M"
+    SEX_FEMALE = "F"
+    SEX_CHOICES = [(SEX_MALE, "Male"), (SEX_FEMALE, "Female")]
+    sex = models.CharField(max_length=1, choices=SEX_CHOICES, blank=True)
     profile_photo = models.ImageField(upload_to="members/photos/", blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_MEMBER)
 

@@ -8,7 +8,8 @@ Assumptions flagged:
   file upload. Actual processing would be kicked off by a separate signal or task.
 """
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -170,14 +171,50 @@ class MemberViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
     create/delete: assembly_admin or super_admin.
     update/partial_update: self OR assembly_admin (IsSelfOrAssemblyAdmin at object level).
 
-    Assumption: role changes are not supported via this API — use Django admin
-    or a future /role-change/ endpoint. This prevents self-escalation.
+    Role changes do not go through update/partial_update — `role` is read-only on
+    MemberSerializer so a member cannot escalate themselves with a self-PATCH.
+    They go through `set-role` below, which only a super admin may call.
     """
 
     def get_serializer_class(self):
         if self.action == "create":
             return MemberCreateSerializer
         return MemberSerializer
+
+    @extend_schema(
+        summary="Change a member's role",
+        description=(
+            "Grants or revokes administrative privileges. Super admins only — a "
+            "PATCH to the member itself cannot change `role`, which is what stops "
+            "a member promoting themselves."
+        ),
+        request={"application/json": {"type": "object", "properties": {"role": {"type": "string"}}}},
+        responses={200: MemberSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="set-role",
+            permission_classes=[IsAuthenticated, IsSuperAdmin])
+    def set_role(self, request, pk=None):
+        member = self.get_object()
+        role = request.data.get("role")
+
+        valid = dict(Member.ROLE_CHOICES)
+        if role not in valid:
+            return Response(
+                {"role": [f"Must be one of: {', '.join(valid)}."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # A super admin removing their own last privilege would lock the church
+        # out of its own administration.
+        if member == getattr(request.user, "member_profile", None) and role != Member.ROLE_SUPER_ADMIN:
+            return Response(
+                {"role": ["You cannot remove your own super admin role."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        member.role = role
+        member.save(update_fields=["role", "updated_at"])
+        return Response(MemberSerializer(member, context={"request": request}).data)
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):

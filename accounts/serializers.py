@@ -130,7 +130,7 @@ class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Member
         fields = [
-            "id", "member_id", "full_name", "date_of_birth", "profile_photo",
+            "id", "member_id", "full_name", "date_of_birth", "sex", "profile_photo",
             "role",
             "assembly", "assembly_id",
             "day_born_group", "day_born_group_id",

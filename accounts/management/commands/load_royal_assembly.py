@@ -200,6 +200,12 @@ def full_name(row: dict[int, str]) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+def clean_sex(raw: str) -> str:
+    """The sheet writes M or F; anything else is treated as not recorded."""
+    v = (raw or "").strip().upper()[:1]
+    return v if v in ("M", "F") else ""
+
+
 def clean_title(raw: str) -> str:
     return TITLE_FIXES.get((raw or "").strip().lower(), (raw or "").strip() or "Member")
 
@@ -319,6 +325,7 @@ class Command(BaseCommand):
                     "user": user,
                     "full_name": name,
                     "date_of_birth": dob,
+                    "sex": clean_sex(row.get(COL["sex"], "")),
                     "role": clean_role(row.get(COL["app_role"], "")),
                     "assembly": assembly,
                     "day_born_group": groups.get(weekday) if weekday is not None else None,

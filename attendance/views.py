@@ -23,6 +23,7 @@ from rest_framework.response import Response
 
 from accounts.models import Member
 from accounts.permissions import IsAssemblyAdminOrSuperAdmin
+from core.models import ActivityLog, record_activity
 from attendance.models import AttendanceSession, AttendanceRecord, MemberAttendanceStat
 from attendance.serializers import (
     AttendanceSessionSerializer,
@@ -99,21 +100,38 @@ class AttendanceSessionViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         if profile.role == Member.ROLE_ASSEMBLY_ADMIN and assembly != profile.assembly:
             raise PermissionDenied("Assembly admins can only open sessions for their own assembly.")
 
-        if not all([
-            assembly.geofence_center_lat,
-            assembly.geofence_center_lng,
-            assembly.geofence_radius_meters,
-        ]):
+        # A service is not always held where the assembly's fence was drawn — a
+        # convention in a school hall, a service under a canopy. So the centre
+        # the admin's own device reports when they open the session wins, and the
+        # assembly's stored fence is the fallback for when it has none.
+        data = serializer.validated_data
+        lat = data.get("geofence_center_lat") or assembly.geofence_center_lat
+        lng = data.get("geofence_center_lng") or assembly.geofence_center_lng
+        radius = data.get("geofence_radius_meters") or assembly.geofence_radius_meters
+
+        if not all([lat, lng, radius]):
             raise ValidationError(
-                "Assembly geofence is not fully configured (lat/lng/radius). "
-                "Set all three in the admin before opening a session."
+                "No geofence for this session. Either send the coordinates when "
+                "opening it, or configure the assembly's own fence first."
             )
 
-        serializer.save(
+        anchored_to_admin = bool(data.get("geofence_center_lat"))
+
+        session = serializer.save(
             opened_by=profile,
-            geofence_center_lat=assembly.geofence_center_lat,
-            geofence_center_lng=assembly.geofence_center_lng,
-            geofence_radius_meters=assembly.geofence_radius_meters,
+            geofence_center_lat=lat,
+            geofence_center_lng=lng,
+            geofence_radius_meters=radius,
+        )
+
+        record_activity(
+            actor=profile,
+            action="Opened attendance session",
+            affected_record=(
+                f"{session.service_name} — {radius}m around "
+                + ("the admin's position" if anchored_to_admin else "the assembly fence")
+            ),
+            assembly=assembly,
         )
 
     @extend_schema(
@@ -144,6 +162,14 @@ class AttendanceSessionViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         session.closed_at = timezone.now()
         session.is_active = False
         session.save(update_fields=["closed_at", "is_active", "updated_at"])
+
+        record_activity(
+            actor=self.get_requesting_profile(),
+            action="Closed attendance session",
+            affected_record=f"{session.service_name} — {session.records.count()} marked",
+            assembly=session.assembly,
+        )
+
         return Response(self.get_serializer(session).data)
 
 
@@ -230,7 +256,20 @@ class AttendanceRecordViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
                 and target_member.assembly != profile.assembly
             ):
                 raise PermissionDenied("Cannot record attendance for a member outside your assembly.")
-            serializer.save(recorded_by=profile)
+            record = serializer.save(recorded_by=profile)
+
+            # An override is a record, not a shortcut: who signed, for whom, and
+            # the reason they gave.
+            record_activity(
+                actor=profile,
+                action="Signed attendance for a member",
+                affected_record=(
+                    f"{target_member.full_name} ({target_member.member_id})"
+                    + (f" — {record.note}" if record.note else "")
+                ),
+                severity=ActivityLog.SEVERITY_WARNING,
+                assembly=target_member.assembly,
+            )
         else:
             # GPS — always set member to the requesting user
             session = validated["session"]

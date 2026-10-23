@@ -24,9 +24,12 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             "geofence_center_lat", "geofence_center_lng", "geofence_radius_meters",
             "created_at", "updated_at",
         ]
+        # The geofence is writable on create so an admin's device can anchor the
+        # session where the service is actually being held. The view still has
+        # the last word: it falls back to the assembly's own fence when no
+        # coordinates are sent, and only admins may open a session at all.
         read_only_fields = [
             "id", "opened_by", "opened_at",
-            "geofence_center_lat", "geofence_center_lng", "geofence_radius_meters",
             "created_at", "updated_at",
         ]
 

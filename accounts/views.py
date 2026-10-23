@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.models import Assembly, DayBornGroup, Member, Elder, ElderOfficeHours, ImportBatch
+from core.models import ActivityLog, record_activity
 from accounts.permissions import (
     IsSuperAdmin,
     IsAssemblyAdminOrSuperAdmin,
@@ -77,6 +78,24 @@ class AssemblyViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
                            a top-level admin action, not per-assembly).
     """
     serializer_class = AssemblySerializer
+
+    def perform_update(self, serializer):
+        before = self.get_object()
+        was = (before.geofence_center_lat, before.geofence_center_lng, before.geofence_radius_meters)
+
+        assembly = serializer.save()
+
+        now = (assembly.geofence_center_lat, assembly.geofence_center_lng, assembly.geofence_radius_meters)
+        if now != was:
+            # The boundary decides who may sign attendance at all, so moving it
+            # is a change to the rule everyone else is measured against.
+            record_activity(
+                actor=self.get_requesting_profile(),
+                action="Changed attendance boundary",
+                affected_record=f"{assembly.name}: {was[0]},{was[1]} r{was[2]} to {now[0]},{now[1]} r{now[2]}",
+                severity=ActivityLog.SEVERITY_WARNING,
+                assembly=assembly,
+            )
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -212,8 +231,20 @@ class MemberViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        was = member.role
         member.role = role
         member.save(update_fields=["role", "updated_at"])
+
+        # Granting or removing administrative access is the most consequential
+        # thing anyone does in this system, so it is always on the trail.
+        record_activity(
+            actor=getattr(request.user, "member_profile", None),
+            action="Granted admin role" if role != Member.ROLE_MEMBER else "Revoked admin role",
+            affected_record=f"{member.full_name} ({member.member_id}): {was} to {role}",
+            severity=ActivityLog.SEVERITY_CRITICAL,
+            assembly=member.assembly,
+        )
+
         return Response(MemberSerializer(member, context={"request": request}).data)
 
     def get_queryset(self):

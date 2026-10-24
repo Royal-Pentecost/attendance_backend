@@ -34,7 +34,7 @@ def normalise_phone(raw: str) -> str:
 
     if not re.fullmatch(r"0\d{9}", digits):
         raise serializers.ValidationError(
-            "Enter a 10-digit Ghanaian number, e.g. 0537096725."
+            "Enter a 10-digit Ghanaian number starting with 0, e.g. 024XXXXXXX."
         )
     return digits
 

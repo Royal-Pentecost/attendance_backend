@@ -166,7 +166,7 @@ class MemberSerializer(serializers.ModelSerializer):
         model = Member
         fields = [
             "id", "member_id", "full_name", "phone_number",
-            "date_of_birth", "sex", "profile_photo",
+            "date_of_birth", "sex", "residence", "church_roles", "profile_photo",
             "role",
             "assembly", "assembly_id",
             "day_born_group", "day_born_group_id",
@@ -191,6 +191,23 @@ class MemberSerializer(serializers.ModelSerializer):
         if taken.exists():
             raise serializers.ValidationError("Another member already uses this phone number.")
         return digits
+
+    def validate_church_roles(self, value):
+        """
+        A list of names, set by an admin.
+
+        Members may correct their own record, and without this a member could
+        appoint themselves to the choir committee or the church secretariat.
+        """
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise serializers.ValidationError("Send a list of role names.")
+        cleaned = [v.strip() for v in value if v.strip()]
+        actor = getattr(getattr(self.context.get("request"), "user", None), "member_profile", None)
+        is_admin = getattr(actor, "role", None) in (Member.ROLE_ASSEMBLY_ADMIN, Member.ROLE_SUPER_ADMIN)
+        current = list(self.instance.church_roles) if self.instance else []
+        if cleaned != current and not is_admin:
+            raise serializers.ValidationError("Only an admin can change church roles.")
+        return cleaned
 
     @transaction.atomic
     def update(self, instance, validated_data):
@@ -289,7 +306,7 @@ class MemberCreateSerializer(serializers.ModelSerializer):
         model = Member
         fields = [
             "id", "user", "phone_number", "member_id", "full_name",
-            "date_of_birth", "sex", "profile_photo",
+            "date_of_birth", "sex", "residence", "church_roles", "profile_photo",
             "role",
             "assembly", "assembly_id",
             "day_born_group_id", "assigned_elder_id",

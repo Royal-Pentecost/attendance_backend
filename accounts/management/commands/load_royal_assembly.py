@@ -206,6 +206,41 @@ def clean_sex(raw: str) -> str:
     return v if v in ("M", "F") else ""
 
 
+# Spellings in the sheet -> the name the church uses.
+ROLE_NAMES = {
+    "royal youth choir": "Royal Youth Choir",
+    "royal drama troupe": "Royal Drama Troupe",
+    "church secetary": "Church Secretary",
+    "church secretary": "Church Secretary",
+}
+
+
+def clean_residence(raw: str) -> str:
+    """'AYIGYA ZONGO' -> 'Ayigya Zongo'. KNUST and other initialisms stay upper."""
+    text = " ".join((raw or "").split())
+    if not text:
+        return ""
+    return " ".join(w if len(w) <= 5 and w.isupper() and w in {"KNUST", "CCC"} else w.capitalize() for w in text.split(" "))
+
+
+def clean_roles(raw: str, residence: str) -> list[str]:
+    """
+    "Royal Youth choir, Royal Drama Troupe" -> ["Royal Youth Choir", "Royal Drama Troupe"].
+
+    A value that is just the member's residence is a slip into the wrong column
+    (MEM-068 has "AYIGYA" under roles and under residence), not a role.
+    """
+    roles = []
+    for part in (raw or "").split(","):
+        name = " ".join(part.split())
+        if not name or name.lower() == (residence or "").strip().lower():
+            continue
+        name = ROLE_NAMES.get(name.lower(), name.title())
+        if name not in roles:
+            roles.append(name)
+    return roles
+
+
 def clean_title(raw: str) -> str:
     return TITLE_FIXES.get((raw or "").strip().lower(), (raw or "").strip() or "Member")
 
@@ -225,6 +260,13 @@ class Command(BaseCommand):
         parser.add_argument(
             "--commit", action="store_true",
             help="Actually write. Without this the command only reports.",
+        )
+        parser.add_argument(
+            "--details-only", action="store_true",
+            help=(
+                "Update only residence and church roles on members already loaded. "
+                "Leaves names, phones, roles and everything corrected in the app alone."
+            ),
         )
         parser.add_argument(
             "--corrections",
@@ -253,15 +295,21 @@ class Command(BaseCommand):
         # roll half-loaded; a dry run rolls the same work back.
         try:
             with transaction.atomic():
-                stats = self._load(rows, overrides)
+                stats = self._details(rows) if options["details_only"] else self._load(rows, overrides)
                 if not options["commit"]:
                     raise _DryRun()
         except _DryRun:
-            self._report(stats, committed=False)
+            if options["details_only"]:
+                self._report_details(stats, committed=False)
+            else:
+                self._report(stats, committed=False)
             self.stdout.write(self.style.WARNING("\nDry run — nothing was written. Re-run with --commit."))
             return
 
-        self._report(stats, committed=True)
+        if options["details_only"]:
+            self._report_details(stats, committed=True)
+        else:
+            self._report(stats, committed=True)
         self.stdout.write(self.style.SUCCESS("\nDone."))
 
     # ── loading ──────────────────────────────────────────────────────────────
@@ -326,6 +374,8 @@ class Command(BaseCommand):
                     "full_name": name,
                     "date_of_birth": dob,
                     "sex": clean_sex(row.get(COL["sex"], "")),
+                    "residence": clean_residence(row.get(COL["residence"], "")),
+                    "church_roles": clean_roles(row.get(COL["church_roles"], ""), row.get(COL["residence"], "")),
                     "role": clean_role(row.get(COL["app_role"], "")),
                     "assembly": assembly,
                     "day_born_group": groups.get(weekday) if weekday is not None else None,
@@ -348,6 +398,38 @@ class Command(BaseCommand):
                 stats["elders"] += 1
 
         return stats
+
+    def _details(self, rows):
+        """Residence and church roles only, matched by member ID."""
+        stats = {"updated": 0, "unchanged": 0, "missing": [], "with_roles": 0, "with_residence": 0}
+        for row in rows:
+            member_id = row.get(COL["member_id"], "").strip()
+            if not member_id or not member_id.upper().startswith("MEM-"):
+                continue  # header and title rows
+            member = Member.objects.filter(member_id=member_id).first()
+            if member is None:
+                stats["missing"].append(member_id)
+                continue
+            residence = clean_residence(row.get(COL["residence"], ""))
+            roles = clean_roles(row.get(COL["church_roles"], ""), row.get(COL["residence"], ""))
+            stats["with_roles"] += bool(roles)
+            stats["with_residence"] += bool(residence)
+            if member.residence == residence and member.church_roles == roles:
+                stats["unchanged"] += 1
+                continue
+            member.residence, member.church_roles = residence, roles
+            member.save(update_fields=["residence", "church_roles", "updated_at"])
+            stats["updated"] += 1
+        return stats
+
+    def _report_details(self, stats, committed: bool):
+        verb = "Updated" if committed else "Would update"
+        self.stdout.write("")
+        self.stdout.write(f"  {verb} members : {stats['updated']}  ({stats['unchanged']} already up to date)")
+        self.stdout.write(f"  With a residence: {stats['with_residence']}")
+        self.stdout.write(f"  With church roles: {stats['with_roles']}")
+        if stats["missing"]:
+            self.stdout.write(self.style.WARNING(f"  Not on the roll, skipped: {', '.join(stats['missing'])}"))
 
     # ── reporting ────────────────────────────────────────────────────────────
 

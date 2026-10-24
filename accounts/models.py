@@ -208,6 +208,12 @@ class Member(BaseModel):
     SEX_FEMALE = "F"
     SEX_CHOICES = [(SEX_MALE, "Male"), (SEX_FEMALE, "Female")]
     sex = models.CharField(max_length=1, choices=SEX_CHOICES, blank=True)
+    # Where they live, as the church records it ("Ayigya Zongo", "KNUST") — how
+    # an elder finds a member to visit. Free text; the roll is not consistent.
+    residence = models.CharField(max_length=150, blank=True)
+    # Ministries and departments they serve in: ["Royal Youth Choir",
+    # "Royal Drama Troupe"]. A list, because one member often serves in two.
+    church_roles = models.JSONField(default=list, blank=True)
     profile_photo = models.ImageField(upload_to="members/photos/", blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_MEMBER)
 

@@ -12,7 +12,9 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny
+
+from core.authentication import end_sessions, is_expired
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -175,6 +177,11 @@ class VerifyOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # An expired token is replaced, not handed back: re-using it would
+        # sign the member in with a session the server is about to refuse.
+        existing = Token.objects.filter(user=user).first()
+        if existing and is_expired(existing):
+            existing.delete()
         token, _ = Token.objects.get_or_create(user=user)
 
         try:
@@ -187,3 +194,20 @@ class VerifyOTPView(APIView):
             {"token": token.key, "member": member_data},
             status=status.HTTP_200_OK,
         )
+
+
+class LogoutView(APIView):
+    """
+    Ends the sign-in on the server, not just on the phone.
+
+    Signing out used to forget the token locally while the server went on
+    accepting it for ever. Now the token is deleted, so it is dead everywhere
+    it was copied — and the phone's push registration goes with it.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Auth"], summary="Sign out", request=None, responses={204: None})
+    def post(self, request):
+        end_sessions(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)

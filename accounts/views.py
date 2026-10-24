@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.models import Assembly, DayBornGroup, Member, Elder, ElderOfficeHours, ImportBatch
+from core.authentication import end_sessions
 from core.models import ActivityLog, record_activity
 from accounts.permissions import (
     IsSuperAdmin,
@@ -308,6 +309,14 @@ class MemberViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         was = member.role
         member.role = role
         member.save(update_fields=["role", "updated_at"])
+
+        # Taking privileges away takes effect now, not at the next sign-in:
+        # their token is deleted, so the very next request their phone makes
+        # is refused and the app returns to login. Granting needs no such
+        # step — the new role is read fresh on every request.
+        rank = {Member.ROLE_MEMBER: 0, Member.ROLE_ASSEMBLY_ADMIN: 1, Member.ROLE_SUPER_ADMIN: 2}
+        if rank.get(role, 0) < rank.get(was, 0):
+            end_sessions(member.user)
 
         # Granting or removing administrative access is the most consequential
         # thing anyone does in this system, so it is always on the trail.

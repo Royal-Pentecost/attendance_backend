@@ -77,7 +77,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        # Tokens expire after SESSION_DAYS; plain TokenAuthentication never did.
+        "core.authentication.ExpiringTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -264,3 +265,6 @@ LOGGING = {
 # if "enhanced push security" is switched on for the project in Expo.
 EXPO_PUSH_ENABLED = config("EXPO_PUSH_ENABLED", default=True, cast=bool)
 EXPO_ACCESS_TOKEN = config("EXPO_ACCESS_TOKEN", default="")
+
+# How long one sign-in lasts before the member must verify their number again.
+SESSION_DAYS = config("SESSION_DAYS", default=28, cast=int)

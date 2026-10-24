@@ -6,6 +6,7 @@ and notifications with audience targeting (all / assembly / day-born group /
 single member) plus per-member read tracking.
 """
 from django.db import models
+from django.utils import timezone
 
 from core.models import BaseModel
 from accounts.models import Assembly, DayBornGroup, Member
@@ -47,13 +48,17 @@ class BibleStudyWeek(BaseModel):
         related_name="bible_study_weeks",
         help_text="Leave blank for district-wide content shared by all assemblies.",
     )
-    theme = models.CharField(max_length=150, help_text="e.g. 'Growing in Grace & Knowledge'")
+    # Optional: the app publishes a week from the pamphlet's title, scripture
+    # and pages, and a term's theme is not something every week restates.
+    theme = models.CharField(max_length=150, blank=True, help_text="e.g. 'Growing in Grace & Knowledge'")
     week_number = models.PositiveSmallIntegerField()
     title = models.CharField(max_length=200, help_text="e.g. 'The Foundation of Faith'")
     scripture_reference = models.CharField(max_length=100, help_text="e.g. 'Hebrews 11:1-6'")
     page_range = models.CharField(max_length=50, blank=True, help_text="e.g. 'pp. 1-18'")
     study_date = models.DateField()
     pdf_file = models.FileField(upload_to="bible_study/pdfs/", blank=True, null=True)
+    # The photograph an admin attaches when publishing; shown atop the guide.
+    cover_image = models.ImageField(upload_to="bible_study/covers/", blank=True, null=True)
     is_published = models.BooleanField(default=False)
 
     class Meta:
@@ -203,3 +208,32 @@ class BibleStudyTranslation(BaseModel):
 
     def __str__(self):
         return f"{self.week.title} [{self.language}]"
+
+
+class DailyVerse(BaseModel):
+    """
+    The verse members see in the morning, in English and Twi.
+
+    Every phone reads the latest one for its assembly (or a district-wide one,
+    assembly=null). It used to exist only in the publishing admin's app — the
+    admin saw it "published" and nobody else ever did.
+    """
+
+    assembly = models.ForeignKey(
+        Assembly, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="daily_verses",
+        help_text="Leave blank for a district-wide verse.",
+    )
+    reference = models.CharField(max_length=100, help_text="e.g. 'John 3:16'")
+    english = models.TextField()
+    twi = models.TextField(blank=True)
+    published_on = models.DateField(default=timezone.localdate)
+    created_by = models.ForeignKey(
+        Member, on_delete=models.SET_NULL, null=True, blank=True, related_name="published_verses",
+    )
+
+    class Meta:
+        ordering = ["-published_on", "-created_at"]
+
+    def __str__(self):
+        return f"{self.reference} ({self.published_on})"

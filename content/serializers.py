@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from accounts.models import Assembly, DayBornGroup, Member
 from accounts.serializers import AssemblyMiniSerializer, DayBornGroupMiniSerializer, MemberMiniSerializer
-from .models import WeeklySchedule, BibleStudyWeek, BibleStudyTranslation, Event, Notification, NotificationRead
+from .models import WeeklySchedule, BibleStudyWeek, BibleStudyTranslation, DailyVerse, Event, Notification, NotificationRead
 
 
 class WeeklyScheduleSerializer(serializers.ModelSerializer):
@@ -54,7 +54,7 @@ class BibleStudyWeekSerializer(serializers.ModelSerializer):
         fields = [
             "id", "assembly", "assembly_id", "theme", "week_number", "title",
             "scripture_reference", "page_range", "study_date",
-            "pdf_file", "is_published", "translations",
+            "pdf_file", "cover_image", "is_published", "translations",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
@@ -194,3 +194,21 @@ class NotificationReadSerializer(serializers.ModelSerializer):
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "member", "read_at", "created_at", "updated_at"]
+
+
+class DailyVerseSerializer(serializers.ModelSerializer):
+    assembly = AssemblyMiniSerializer(read_only=True)
+    assembly_id = serializers.PrimaryKeyRelatedField(
+        source="assembly", queryset=Assembly.objects.all(),
+        write_only=True, allow_null=True, required=False,
+        help_text="Omit for a district-wide verse.",
+    )
+    created_by = MemberMiniSerializer(read_only=True)
+
+    class Meta:
+        model = DailyVerse
+        fields = [
+            "id", "assembly", "assembly_id", "reference", "english", "twi",
+            "published_on", "created_by", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "published_on", "created_by", "created_at", "updated_at"]

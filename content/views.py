@@ -23,9 +23,10 @@ from rest_framework.permissions import IsAuthenticated
 from accounts.models import Member
 from accounts.permissions import IsAssemblyAdminOrSuperAdmin
 from content.models import WeeklySchedule, BibleStudyWeek, Event, Notification, NotificationRead
-from content.models import BibleStudyTranslation
+from content.models import BibleStudyTranslation, DailyVerse
 from content.serializers import (
     BibleStudyTranslationSerializer,
+    DailyVerseSerializer,
     WeeklyScheduleSerializer,
     BibleStudyWeekSerializer,
     EventSerializer,
@@ -272,7 +273,7 @@ class NotificationReadViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
     list=extend_schema(summary="Study text, per language"),
     create=extend_schema(summary="Write a study in one language"),
 )
-class BibleStudyTranslationViewSet(viewsets.ModelViewSet):
+class BibleStudyTranslationViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
     """
     The written-out study, one row per language.
 
@@ -286,5 +287,51 @@ class BibleStudyTranslationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if getattr(self, "swagger_fake_view", False):
+            return qs.none()
+        # Only the text of weeks this member can see — their assembly's and the
+        # district's. It returned every assembly's text to anyone signed in.
+        profile = self.get_requesting_profile()
+        if profile is None:
+            qs = qs if self.request.user.is_superuser else qs.none()
+        elif profile.role != Member.ROLE_SUPER_ADMIN:
+            qs = qs.filter(
+                django_models.Q(week__assembly=profile.assembly) | django_models.Q(week__assembly__isnull=True)
+            )
         week = self.request.query_params.get("week")
         return qs.filter(week_id=week) if week else qs
+
+    def get_permissions(self):
+        # Writing a study is an admin's job. With no rule here, any member could
+        # rewrite or delete the text every other member reads.
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [IsAuthenticated(), IsAssemblyAdminOrSuperAdmin()]
+        return [IsAuthenticated()]
+
+
+class DailyVerseViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
+    """
+    The morning verse. Read: the member's assembly and district-wide verses,
+    newest first — the app shows the first. Write: assembly_admin or super_admin.
+    """
+    serializer_class = DailyVerseSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return DailyVerse.objects.none()
+        profile = self.get_requesting_profile()
+        if profile is None:
+            return DailyVerse.objects.all() if self.request.user.is_superuser else DailyVerse.objects.none()
+        if profile.role == Member.ROLE_SUPER_ADMIN:
+            return DailyVerse.objects.all()
+        return DailyVerse.objects.filter(
+            django_models.Q(assembly=profile.assembly) | django_models.Q(assembly__isnull=True)
+        )
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [IsAuthenticated(), IsAssemblyAdminOrSuperAdmin()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.get_requesting_profile())

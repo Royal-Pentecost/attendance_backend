@@ -75,15 +75,20 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            "id", "title", "description", "event_date", "scope",
+            "id", "title", "description", "event_date", "cover_image", "scope",
             "assembly", "assembly_id", "created_by",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
 
     def validate(self, data):
-        scope = data.get("scope", Event.SCOPE_ASSEMBLY)
-        assembly = data.get("assembly")
+        # On a partial update, a field that was not sent keeps its stored value.
+        # Reading only `data` made every PATCH that did not repeat `assembly_id`
+        # fail — attaching a photo, or correcting a title, was refused with
+        # "assembly is required" on an event that already had one.
+        instance = self.instance
+        scope = data.get("scope", instance.scope if instance else Event.SCOPE_ASSEMBLY)
+        assembly = data["assembly"] if "assembly" in data else (instance.assembly if instance else None)
         if scope == Event.SCOPE_ASSEMBLY and not assembly:
             raise serializers.ValidationError(
                 {"assembly": "assembly is required when scope is 'assembly'."}

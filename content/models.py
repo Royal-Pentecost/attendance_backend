@@ -75,6 +75,10 @@ class Event(BaseModel):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     event_date = models.DateField()
+    # The photograph an admin attaches when publishing. Without somewhere to
+    # put it, the picture stayed on the publishing phone and every member saw
+    # the app's stock photo instead. Schedules already had `banner_image`.
+    cover_image = models.ImageField(upload_to="events/covers/", blank=True, null=True)
     scope = models.CharField(max_length=20, choices=SCOPE_CHOICES, default=SCOPE_ASSEMBLY)
     assembly = models.ForeignKey(
         Assembly, on_delete=models.CASCADE, null=True, blank=True,

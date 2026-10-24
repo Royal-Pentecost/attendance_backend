@@ -100,3 +100,24 @@ def record_activity(actor, action, affected_record="", severity=ActivityLog.SEVE
         )
     except Exception:  # noqa: BLE001 - never break the caller over a log line
         return None
+
+
+class PushDevice(BaseModel):
+    """
+    One phone that can be woken with a push notification.
+
+    The app registers its Expo push token after sign-in, so the server can reach
+    a member when the app is closed — attendance opening, an event published, the
+    daily verse. A member may have several phones; a phone belongs to whoever
+    signed in on it last, so the token is unique and moves with the sign-in.
+    Tokens Expo reports as dead are deleted when a send finds them.
+    """
+
+    PLATFORM_CHOICES = [("android", "Android"), ("ios", "iOS")]
+
+    member = models.ForeignKey("accounts.Member", on_delete=models.CASCADE, related_name="push_devices")
+    token = models.CharField(max_length=200, unique=True)
+    platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, blank=True)
+
+    def __str__(self):
+        return f"{self.member} — {self.platform or 'device'}"

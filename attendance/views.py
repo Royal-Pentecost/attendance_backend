@@ -26,6 +26,8 @@ from rest_framework.response import Response
 from accounts.models import Member
 from accounts.permissions import IsAssemblyAdminOrSuperAdmin
 from core.models import ActivityLog, record_activity
+from core.push import announce
+from content.models import Notification
 from attendance.models import AttendanceSession, AttendanceRecord, MemberAttendanceStat
 from attendance.serializers import (
     AttendanceSessionSerializer,
@@ -154,6 +156,17 @@ class AttendanceSessionViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
             geofence_center_lat=lat,
             geofence_center_lng=lng,
             geofence_radius_meters=radius,
+        )
+
+        # Every member of the assembly is told, app open or not: a member who
+        # finds out after the service has missed their chance to sign.
+        announce(
+            kind=Notification.TYPE_SESSION_OPEN,
+            title="Attendance is open",
+            body=f"{session.service_name} has started. Open the app to sign in.",
+            assembly=assembly,
+            actor=profile,
+            data={"sessionId": str(session.id)},
         )
 
         record_activity(

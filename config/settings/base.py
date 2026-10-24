@@ -257,3 +257,10 @@ LOGGING = {
         },
     },
 }
+
+# ── Push notifications (core/push.py) ─────────────────────────────────────────
+# Sent through Expo's push service. Set EXPO_PUSH_ENABLED=0 to silence them
+# (tests, a staging copy of production data). EXPO_ACCESS_TOKEN is only needed
+# if "enhanced push security" is switched on for the project in Expo.
+EXPO_PUSH_ENABLED = config("EXPO_PUSH_ENABLED", default=True, cast=bool)
+EXPO_ACCESS_TOKEN = config("EXPO_ACCESS_TOKEN", default="")

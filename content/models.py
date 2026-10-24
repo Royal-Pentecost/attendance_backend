@@ -113,6 +113,7 @@ class Notification(BaseModel):
     TYPE_STREAK = "streak"
     TYPE_ELDER_AVAILABILITY = "elder_availability"
     TYPE_SYSTEM = "system"
+    TYPE_DAILY_VERSE = "daily_verse"
     TYPE_CHOICES = [
         (TYPE_SESSION_OPEN, "Attendance Session Open"),
         (TYPE_EVENT, "Event"),
@@ -120,6 +121,7 @@ class Notification(BaseModel):
         (TYPE_STREAK, "Streak Milestone"),
         (TYPE_ELDER_AVAILABILITY, "Elder Availability"),
         (TYPE_SYSTEM, "System"),
+        (TYPE_DAILY_VERSE, "Daily verse"),
     ]
 
     AUDIENCE_ALL = "all"

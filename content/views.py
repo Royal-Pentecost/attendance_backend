@@ -24,6 +24,7 @@ from accounts.models import Member
 from accounts.permissions import IsAssemblyAdminOrSuperAdmin
 from content.models import WeeklySchedule, BibleStudyWeek, Event, Notification, NotificationRead
 from content.models import BibleStudyTranslation, DailyVerse
+from core.push import announce
 from content.serializers import (
     BibleStudyTranslationSerializer,
     DailyVerseSerializer,
@@ -162,7 +163,16 @@ class EventViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         profile = self.get_requesting_profile()
-        serializer.save(created_by=profile)
+        event = serializer.save(created_by=profile)
+        # Everyone it concerns hears about it on their phone, app open or not.
+        announce(
+            kind=Notification.TYPE_EVENT,
+            title=f"New event: {event.title}",
+            body=f"{event.event_date:%A %d %B}" + (f" — {event.description}" if event.description else ""),
+            assembly=event.assembly if event.scope == Event.SCOPE_ASSEMBLY else None,
+            actor=profile,
+            data={"eventId": str(event.id)},
+        )
 
 
 @extend_schema_view(
@@ -334,4 +344,15 @@ class DailyVerseViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.get_requesting_profile())
+        profile = self.get_requesting_profile()
+        verse = serializer.save(created_by=profile)
+        # The morning verse arrives as a notification on every phone.
+        text = verse.english if len(verse.english) <= 180 else verse.english[:177].rstrip() + "…"
+        announce(
+            kind=Notification.TYPE_DAILY_VERSE,
+            title=f"Today's verse — {verse.reference}",
+            body=text,
+            assembly=verse.assembly,
+            actor=profile,
+            data={"verseId": str(verse.id)},
+        )

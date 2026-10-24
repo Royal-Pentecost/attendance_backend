@@ -118,11 +118,13 @@ class MemberAttendanceStatSerializer(serializers.ModelSerializer):
             "id", "member", "assembly", "year",
             "sessions_attended", "sessions_possible", "annual_score_percent",
             "current_streak_weeks", "longest_streak_weeks", "last_attended_session",
+            "sundays_attended", "sundays_possible", "average_arrival_minutes",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "member", "assembly", "year",
             "sessions_attended", "sessions_possible", "annual_score_percent",
             "current_streak_weeks", "longest_streak_weeks", "last_attended_session",
+            "sundays_attended", "sundays_possible", "average_arrival_minutes",
             "created_at", "updated_at",
         ]

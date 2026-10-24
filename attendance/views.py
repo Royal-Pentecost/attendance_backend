@@ -113,6 +113,11 @@ class AttendanceSessionViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         day = _parse_date(self.request)
         if day:
             qs = qs.filter(opened_at__date=day)
+        # `?open=true` — the session(s) still taking attendance, whatever day
+        # they were opened. Every phone polls for this; without the filter it
+        # meant downloading every session the assembly had ever held.
+        if (self.request.query_params.get("open") or "").lower() in ("1", "true", "yes"):
+            qs = qs.filter(is_active=True, closed_at__isnull=True)
         return qs
 
     def get_permissions(self):

@@ -71,8 +71,9 @@ class AttendanceRecord(BaseModel):
 
 class MemberAttendanceStat(BaseModel):
     """
-    Cached/materialized stats, recomputed via signal whenever an
-    AttendanceRecord is created or a session is closed. Keeps the dashboard
+    Cached/materialized stats, recomputed by `attendance.stats` (wired up in
+    `attendance.signals`) whenever an AttendanceRecord is created or removed,
+    or a session opens, closes or is deleted. Keeps the dashboard
     and leaderboard fast without aggregating raw records on every request.
     Partitioned by year so historical leaderboards remain meaningful.
     """
@@ -84,8 +85,16 @@ class MemberAttendanceStat(BaseModel):
     sessions_attended = models.PositiveIntegerField(default=0)
     sessions_possible = models.PositiveIntegerField(default=0)
     annual_score_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # Consecutive Sunday services attended. Counted in Sundays that actually
+    # had a service, so a Sunday with no session neither adds nor breaks it.
     current_streak_weeks = models.PositiveIntegerField(default=0)
     longest_streak_weeks = models.PositiveIntegerField(default=0)
+    sundays_attended = models.PositiveIntegerField(default=0)
+    sundays_possible = models.PositiveIntegerField(default=0)
+    # Mean minutes between a session opening and this member's own GPS sign-in.
+    # Manual entries are left out: their time is when an admin typed them in,
+    # not when the member arrived. Null until they have signed in themselves.
+    average_arrival_minutes = models.FloatField(blank=True, null=True)
     last_attended_session = models.ForeignKey(
         AttendanceSession, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
     )

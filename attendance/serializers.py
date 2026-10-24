@@ -32,6 +32,16 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             "id", "opened_by", "opened_at",
             "created_at", "updated_at",
         ]
+        # Optional on the way in. The model columns are NOT NULL, so DRF made
+        # all three required — and the view's fallback to the assembly's own
+        # fence could never run, because a request without coordinates was
+        # rejected before reaching it. An admin whose phone had no usable GPS
+        # fix therefore could not open a session at all.
+        extra_kwargs = {
+            "geofence_center_lat": {"required": False},
+            "geofence_center_lng": {"required": False},
+            "geofence_radius_meters": {"required": False},
+        }
 
 
 class AttendanceRecordSerializer(serializers.ModelSerializer):

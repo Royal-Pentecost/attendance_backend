@@ -214,6 +214,13 @@ class Member(BaseModel):
     # Ministries and departments they serve in: ["Royal Youth Choir",
     # "Royal Drama Troupe"]. A list, because one member often serves in two.
     church_roles = models.JSONField(default=list, blank=True)
+    # "Single", "Married", "Widowed", "Divorced" — from the church register.
+    # Blank when not recorded; never guessed.
+    MARITAL_CHOICES = [
+        ("single", "Single"), ("married", "Married"),
+        ("widowed", "Widowed"), ("divorced", "Divorced"),
+    ]
+    marital_status = models.CharField(max_length=10, choices=MARITAL_CHOICES, blank=True)
     profile_photo = models.ImageField(upload_to="members/photos/", blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_MEMBER)
 

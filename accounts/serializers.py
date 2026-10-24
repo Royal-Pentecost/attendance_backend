@@ -166,7 +166,7 @@ class MemberSerializer(serializers.ModelSerializer):
         model = Member
         fields = [
             "id", "member_id", "full_name", "phone_number",
-            "date_of_birth", "sex", "residence", "church_roles", "profile_photo",
+            "date_of_birth", "sex", "residence", "church_roles", "marital_status", "profile_photo",
             "role",
             "assembly", "assembly_id",
             "day_born_group", "day_born_group_id",
@@ -306,7 +306,7 @@ class MemberCreateSerializer(serializers.ModelSerializer):
         model = Member
         fields = [
             "id", "user", "phone_number", "member_id", "full_name",
-            "date_of_birth", "sex", "residence", "church_roles", "profile_photo",
+            "date_of_birth", "sex", "residence", "church_roles", "marital_status", "profile_photo",
             "role",
             "assembly", "assembly_id",
             "day_born_group_id", "assigned_elder_id",

@@ -11,7 +11,9 @@ Assumptions flagged:
   because closing is a business event, not just a field update.
 - Assembly admins can only open sessions for their own assembly.
 """
+import datetime
 import math
+import uuid
 
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
@@ -30,6 +32,25 @@ from attendance.serializers import (
     AttendanceRecordSerializer,
     MemberAttendanceStatSerializer,
 )
+
+
+def _parse_date(request):
+    """
+    `?date=YYYY-MM-DD`, or None when absent.
+
+    The dashboard asks "who signed in today", and without this the only way to
+    answer was to download every record the church has ever taken — which the
+    app caps at a few hundred rows, so within weeks today's would fall off the
+    end of the list and the count would quietly read zero.
+    """
+    raw = (request.query_params.get("date") or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.date.fromisoformat(raw)
+    except ValueError:
+        raise ValidationError({"date": ["Use the form YYYY-MM-DD."]})
+
 
 
 def haversine_distance(lat1, lng1, lat2, lng2):
@@ -85,8 +106,14 @@ class AttendanceSessionViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         if profile is None:
             return AttendanceSession.objects.all() if self.request.user.is_superuser else AttendanceSession.objects.none()
         if profile.role == Member.ROLE_SUPER_ADMIN:
-            return AttendanceSession.objects.all()
-        return AttendanceSession.objects.filter(assembly=profile.assembly)
+            qs = AttendanceSession.objects.all()
+        else:
+            qs = AttendanceSession.objects.filter(assembly=profile.assembly)
+
+        day = _parse_date(self.request)
+        if day:
+            qs = qs.filter(opened_at__date=day)
+        return qs
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy", "close"):
@@ -229,8 +256,23 @@ class AttendanceRecordViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         if profile is None:
             return AttendanceRecord.objects.all() if self.request.user.is_superuser else AttendanceRecord.objects.none()
         if profile.role == Member.ROLE_SUPER_ADMIN:
-            return AttendanceRecord.objects.all()
-        return AttendanceRecord.objects.filter(session__assembly=profile.assembly)
+            qs = AttendanceRecord.objects.all()
+        else:
+            qs = AttendanceRecord.objects.filter(session__assembly=profile.assembly)
+
+        # Filtered after scoping, never instead of it: a session id from another
+        # assembly simply matches nothing here.
+        session = (self.request.query_params.get("session") or "").strip()
+        if session:
+            try:
+                qs = qs.filter(session_id=uuid.UUID(session))
+            except ValueError:
+                # A malformed id would otherwise reach the UUID column and 500.
+                raise ValidationError({"session": ["Not a valid session id."]})
+        day = _parse_date(self.request)
+        if day:
+            qs = qs.filter(session__opened_at__date=day)
+        return qs
 
     def get_permissions(self):
         if self.action in ("update", "partial_update", "destroy"):
@@ -244,6 +286,12 @@ class AttendanceRecordViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
         method = validated.get("method", AttendanceRecord.METHOD_GPS)
         lat = validated.pop("lat", None)
         lng = validated.pop("lng", None)
+        session = validated["session"]
+
+        # A closed session is a finished service. Without this, a member could
+        # sign in to last Sunday from their sofa on Wednesday.
+        if not session.is_active or session.closed_at:
+            raise ValidationError({"session_id": ["This attendance session has closed."]})
 
         if method == AttendanceRecord.METHOD_MANUAL:
             if profile.role not in (Member.ROLE_ASSEMBLY_ADMIN, Member.ROLE_SUPER_ADMIN):
@@ -256,6 +304,10 @@ class AttendanceRecordViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
                 and target_member.assembly != profile.assembly
             ):
                 raise PermissionDenied("Cannot record attendance for a member outside your assembly.")
+            if AttendanceRecord.objects.filter(session=session, member=target_member).exists():
+                raise ValidationError(
+                    {"member_id": [f"{target_member.full_name} is already signed in for this service."]}
+                )
             record = serializer.save(recorded_by=profile)
 
             # An override is a record, not a shortcut: who signed, for whom, and
@@ -272,13 +324,27 @@ class AttendanceRecordViewSet(AssemblyScopedMixin, viewsets.ModelViewSet):
             )
         else:
             # GPS — always set member to the requesting user
-            session = validated["session"]
-            distance = None
-            if lat is not None and lng is not None:
-                distance = haversine_distance(
-                    lat, lng,
-                    session.geofence_center_lat, session.geofence_center_lng,
-                )
+            if AttendanceRecord.objects.filter(session=session, member=profile).exists():
+                raise ValidationError({"session_id": ["You have already signed in for this service."]})
+
+            # `validate` guarantees both are present for a GPS mark.
+            distance = haversine_distance(
+                lat, lng,
+                session.geofence_center_lat, session.geofence_center_lng,
+            )
+
+            # The whole point of the geofence. The distance used to be computed,
+            # stored, and never compared — so a mark from across town was
+            # accepted exactly like one from the front pew.
+            radius = session.geofence_radius_meters
+            if radius and distance > radius:
+                raise ValidationError({
+                    "location": [
+                        f"You are about {round(distance)}m from the service. "
+                        f"Attendance can only be signed within {radius}m."
+                    ]
+                })
+
             serializer.save(member=profile, distance_from_center_meters=distance)
 
 

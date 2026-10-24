@@ -75,6 +75,13 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
             "id", "marked_at", "distance_from_center_meters", "recorded_by",
             "created_at", "updated_at",
         ]
+        # DRF derives a UniqueTogetherValidator from the model's
+        # ("session", "member") constraint, and that validator makes every field
+        # it covers *required* — so `member_id` became mandatory and every GPS
+        # check-in, which never sends it, was rejected. The member on a GPS mark
+        # is the requester and is only known in the view, so the one-mark-per-
+        # session rule is enforced there instead, where it can say so plainly.
+        validators = []
 
     def validate(self, data):
         # Only validate GPS coords on creation (updates don't re-supply them)
